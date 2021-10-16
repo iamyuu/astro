@@ -1,5 +1,5 @@
 import type { TransformResult } from '@astrojs/compiler';
-import type { Plugin } from '../core/vite';
+import type vite from '../core/vite';
 import type { AstroConfig } from '../@types/astro-core';
 
 import esbuild from 'esbuild';
@@ -7,6 +7,7 @@ import fs from 'fs';
 import { transform } from '@astrojs/compiler';
 import { decode } from 'sourcemap-codec';
 import { AstroDevServer } from '../core/dev/index.js';
+import { preprocessStyle } from './styles.js';
 
 interface AstroPluginOptions {
   config: AstroConfig;
@@ -14,10 +15,14 @@ interface AstroPluginOptions {
 }
 
 /** Transform .astro files for Vite */
-export default function astro({ config, devServer }: AstroPluginOptions): Plugin {
+export default function astro({ config, devServer }: AstroPluginOptions): vite.Plugin {
+  let viteConfig: vite.ResolvedConfig;
   return {
     name: '@astrojs/vite-plugin-astro',
     enforce: 'pre', // run transforms before other plugins can
+    configResolved(resolvedConfig) {
+      viteConfig = resolvedConfig; // gain access to vite:css
+    },
     // note: don’t claim .astro files with resolveId() — it prevents Vite from transpiling the final JS (import.meta.globEager, etc.)
     async load(id) {
       if (!id.endsWith('.astro')) {
@@ -25,6 +30,10 @@ export default function astro({ config, devServer }: AstroPluginOptions): Plugin
       }
       // const isPage = id.startsWith(fileURLToPath(config.pages));
       let source = await fs.promises.readFile(id, 'utf8');
+
+      // preprocess styles before compiler runs
+      source = await preprocessStyle({ source, filePath: id, config, viteConfig });
+
       let tsResult: TransformResult | undefined;
 
       try {
