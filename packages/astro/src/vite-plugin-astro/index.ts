@@ -4,6 +4,7 @@ import type { AstroConfig } from '../@types/astro-core';
 
 import esbuild from 'esbuild';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { transform } from '@astrojs/compiler';
 import { decode } from 'sourcemap-codec';
 import { AstroDevServer } from '../core/dev/index.js';
@@ -23,7 +24,9 @@ export default function astro({ config, devServer }: AstroPluginOptions): Plugin
       if (!id.endsWith('.astro')) {
         return null;
       }
-      // const isPage = id.startsWith(fileURLToPath(config.pages));
+      // pages and layouts should be transformed as full documents (implicit <head> <body> etc)
+      // everything else is treated as a fragment
+      const isPage = id.startsWith(fileURLToPath(config.pages)) || id.startsWith(fileURLToPath(config.layouts));
       let source = await fs.promises.readFile(id, 'utf8');
       let tsResult: TransformResult | undefined;
 
@@ -31,6 +34,7 @@ export default function astro({ config, devServer }: AstroPluginOptions): Plugin
         // 1. Transform from `.astro` to valid `.ts`
         // use `sourcemap: "inline"` so that the sourcemap is included in the "code" result that we pass to esbuild.
         tsResult = await transform(source, {
+          as: isPage ? "document" : "fragment",
           site: config.buildOptions.site,
           sourcefile: id,
           sourcemap: 'both',
